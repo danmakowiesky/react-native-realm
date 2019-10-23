@@ -1,14 +1,32 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {Keyboard} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+
 import api from '~/services/api';
 import getRealm from '~/services/realm';
+
 import Repository from '~/components/Repository';
+
 import {Container, Title, Form, Input, Submit, List} from './styles';
 
 export default function Main() {
   const [input, setInput] = useState('');
   const [error, setError] = useState(false);
+  const [repositories, setRepositories] = useState([]);
+
+  useEffect(() => {
+    async function loadRepositories() {
+      const realm = await getRealm();
+
+      console.tron.log(realm.path);
+
+      const data = realm.objects('Repository').sorted('stars', true);
+
+      setRepositories(data);
+    }
+
+    loadRepositories();
+  }, []);
 
   async function saveRepository(repository) {
     const data = {
@@ -23,8 +41,10 @@ export default function Main() {
     const realm = await getRealm();
 
     realm.write(() => {
-      realm.create('Repository', data);
+      realm.create('Repository', data, 'modified');
     });
+
+    return data;
   }
 
   async function handleAddRepository() {
@@ -40,17 +60,29 @@ export default function Main() {
       setError(true);
     }
   }
+
+  async function handleRefreshRepository(repository) {
+    const response = await api.get(`/repos/${repository.fullName}`);
+
+    const data = await saveRepository(response.data);
+
+    setRepositories(
+      repositories.map(repo => (repo.id === data.id ? data : repo)),
+    );
+  }
+
   return (
     <Container>
-      <Title>Repositorios</Title>
+      <Title>Repositórios</Title>
+
       <Form>
         <Input
           value={input}
           error={error}
-          onChangeText={text => setInput(text)}
+          onChangeText={setInput}
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="Procurar Repositório"
+          placeholder="Procurar repositório..."
         />
         <Submit onPress={handleAddRepository}>
           <Icon name="add" size={22} color="#FFF" />
@@ -59,17 +91,14 @@ export default function Main() {
 
       <List
         keyboardShouldPersistTaps="handled"
-        data={[
-          {
-            id: 1,
-            name: 'teste',
-            description: 'qwert',
-            stars: 1234,
-            forks: 1234,
-          },
-        ]}
+        data={repositories}
         keyExtractor={item => String(item.id)}
-        renderItem={({item}) => <Repository data={item} />}
+        renderItem={({item}) => (
+          <Repository
+            data={item}
+            onRefresh={() => handleRefreshRepository(item)}
+          />
+        )}
       />
     </Container>
   );
